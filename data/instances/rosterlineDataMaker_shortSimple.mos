@@ -155,7 +155,7 @@
 
 	!Illegal (under rest) shifts following
 		forall (s1 in ShiftTypesWorking) do
-			forall (s2 in ShiftTypesWorking) do !consdier excluding s1 here
+			forall (s2 in ShiftTypesWorking) do
 				if (T_S(s2) + H - T_E(s1) < T_R) then
 					FollowingShiftsIllegal(s1) += {s2};
 				end-if
@@ -164,7 +164,7 @@
 
 	!Penalized (reduced rest) shifts following
 		forall (s1 in ShiftTypesWorking) do
-			forall (s2 in ShiftTypesWorking) do !consdier excluding s1 here (Might not be smart since one can imagine shift types not allowed to follow themselves
+			forall (s2 in ShiftTypesWorking) do 
 				if (T_R <= T_S(s2) + H - T_E(s1) and T_S(s2) + H - T_E(s1) < T_RS) then
 					FollowingShiftsPenalty(s1) += {s2};
 				end-if
@@ -249,7 +249,7 @@
 			NormPeriodStartDays += {d};
 		end-do
 
-	!Costs of shifts (temporary random cost between -1000 and 1000)
+	!Costs of shifts (random cost between -1000 and 1000)
 		forall (d in Days) do
 			forall (s in ShiftTypes) do
 				C(d, s) := -1000 + 2000 * random;
