@@ -7,7 +7,7 @@ rosterlineMaster.mos            Mosel Xpress RMP. Constraints should be commente
 columnGeneration.py             Function for column generation algorithm implementation. Called by decomposed.py.
 decomposed.py                   Script to run decomposed model on input instance(s) and save results to file.
 functionsCG.py                  Functions used in columnGeneration.py.
-classes.py                      Classes used in SPPRC network.
+classes.py                      Classes used in SPPRC network. Resources should be commented out depending on decomposed model configuration.
 solveSPPRC.py                   Function to solve SPPRC. Called by columnGeneration.py.
 functionsSPPRC.py               Functions used in spprc.py.
 resourceExtensionFunctions.py   REFs used in functionsSPPRC.py.
