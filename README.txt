@@ -2,7 +2,7 @@
 Vegard Pedersen and Sander Coates project report. NTNU, December 2018.
 
 File                            Description
-===============================================================================================================================================================================
+========================================================================================================================================================================================================================================================================================================================
 rosterlineMaster.mos            Mosel Xpress RMP. Constraints should be commented out depending on decomposed model configuration. Binary requirement can be enforced. Self-executable files need to be made in Xpress-IVE to run program from columnGeneration.py.
 columnGeneration.py             Function for column generation algorithm implementation. Called by decomposed.py.
 decomposed.py                   Script to run decomposed model on input instance(s) and save results to file.
