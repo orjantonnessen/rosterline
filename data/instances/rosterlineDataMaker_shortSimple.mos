@@ -1,7 +1,4 @@
-! This file is the code for a making the datafile needed in the rosterlineMIP.mos model, pr. 31. October 2018
-! Assumptions:
-!		Planning period starts on a Monday
-!		Entire weeks only (number of days a multiple of number of days in week)
+! This file is the code for a making the datafile needed in the rosterlineMIP.mos model, per 18. December 2018
 ! Created by Sander Coates and Vegard Pedersen
 ! Part of Project Report 9. semester Indoek
 ! ------------------------------------------------------------------------------
