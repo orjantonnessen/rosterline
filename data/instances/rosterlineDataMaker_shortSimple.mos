@@ -1,0 +1,370 @@
+! This file is the code for a making the datafile needed in the rosterlineMIP.mos model, pr. 31. October 2018
+! Assumptions:
+!		Planning period starts on a Monday
+!		Entire weeks only (number of days a multiple of number of days in week)
+! Created by Sander Coates and Vegard Pedersen
+! Part of Project Report 9. semester Indoek
+! ------------------------------------------------------------------------------
+
+!=== Setup ===
+	model rosterlineDataMaker
+
+	options explterm
+	options noimplicit
+
+	uses "mmxprs"; !gain access to the Xpress-Optimizer solver
+
+	!Data file name
+		parameters
+			DataFile = 'shortSimple.txt';
+		end-parameters
+
+!=== Data file declarations ===
+	declarations
+		!=== Sets ===
+			!Shifts
+			ShiftTypes:					set 						of integer; !Set of possible shift types
+			ShiftGroups:				set 						of integer; !Set of shift groups
+			ShiftTypesGroup: 			dynamic array(ShiftGroups)	of set of integer; !Sets of shift types in one shift group
+			ShiftTypesWorking: 			set 						of integer; !Set of shift types representing working shifts
+			ShiftTypesOff: 				set 						of integer; !Set of shift types representing off shifts
+
+			!Shift combinations and patterns
+			FollowingShiftsIllegal: 	dynamic array(ShiftTypes) 	of set of integer; !Sets of shift types not allowed to follow shift type s
+			FollowingShiftsPenalty: 	dynamic array(ShiftTypes) 	of set of integer; !Sets of shift types incurring rest penalty if following shift type s
+			StrictDayOff1: 				dynamic array(ShiftTypes)	of set of integer; !Set of shift types that cannot follow shift type with one strict day off in between
+			StrictDayOff2: 			dynamic array(ShiftTypes)	of set of integer; !Set of shift types that cannot follow shift type with two strict days off in between
+			PatternsPenalized: 			set 						of integer; !Set of penalized patterns
+			PatternsRewarded: 			set 						of integer; !Set of rewarded patterns
+			PatternsIllegal: 			set 						of integer; !Set of illegal patterns
+			Patterns:					set 						of integer; !Assisting set - union of all pattern sets
+
+			!Weeks
+			Weeks: 						set of integer; !Set of weeks in planning period
+
+			!Days
+			Days: 						set 							of integer; !Set of days in planning period
+			DaysInWeek: 				dynamic array(Weeks) 			of set of integer; !Sets of days in week w
+			Weekdays: 					set 							of string; !Set of weekdays (set to integer representation for now)
+			WeekendDaysInWeek: 			dynamic array(Weeks) 			of set of integer; !Sets of weekend days in week w
+			DaysOnWeekday: 				dynamic array(Weekdays)			of set of integer; !Sets of days occuring on weekday a
+			DaysOnWeekdayInWeek: 		dynamic array(Weekdays,Weeks)	of set of integer; !Set of days on weekday a in week w (one day)
+			NormPeriodStartDays: 		set of integer; !Set of starting days in norm periods for work load calculations
+			WeekdaysStartPattern: 		dynamic array(Patterns) 		of set of string; !Set of set of weekdays when pattern p can begin
+
+		!=== Parameters ===
+			!Time
+			T_S:			array(ShiftTypesWorking)					of real; !Start time of shift type s
+			T_E:			array(ShiftTypesWorking)					of real; !End time of shift type s
+			T:				array(ShiftTypesWorking)					of real; !Duration of shift type s
+			T_R:														real; !Min rest time between shifts without penalty
+			T_RS:														real; !Min rest time between shifts
+			H:															integer; !Hours in a day (=24)
+
+			!Other
+			C:				array(Days,ShiftTypes)						of real; !Cost of shift type s on day d
+			C_R:														real; !Cost per day with less than T_R hours of rest
+			C_minus:													real; !Cost per hour undertime in norm period
+			C_plus:														real; !Cost per hour overtime in norm period
+			Nmax:														integer; !Max number of consecutive days working
+			NmaxGroup:		array(ShiftGroups)							of integer; !Max number of consecutive days working shift group g
+			Nmin:														integer; !Min number of consecutive days working
+			NminGroup:		array(ShiftGroups)							of integer; !Min number of consecutive days working shift group g
+			W_W:														integer; !Number of weeks in period subject to constraints on number of free weekends
+			Nmin_W:														integer; !Number of weekends free during a period of W_W weekends
+			D_S:														integer; !Number of days in period with requirements on strict days off
+			Nmin_S:														integer; !Min number of strict days off in D_S days
+			D_R:														integer; !Number of days in period with requirements on resting days
+			Nmax_R:														integer; !Max number of days with little rest in R days
+			H_S1:														real; !Number of hours off required for strict day off
+			H_S2:														real; !Number of hours off required for two strict days off
+			N_N:														integer; !Number of days in norm period for workload calculation
+			W_N:														real; !Number of weeks in norm period for workload calculation (=N_N/7)
+			H_W:														real; !Number of contracted working hours per week
+			WMax_plus:													real; !Maximum hours of overtime in norm period for workload calculation
+			WMax_minus:													real; !Maximum hours of undertime in norm period for workload calculation
+			P:				array(PatternsPenalized)					of real; !Penalty for working pattern p
+			R:				array(PatternsRewarded)						of real; !Reward for working pattern p
+			D:				dynamic array(Patterns) 					of integer; !Duration (number of days) in pattern p
+			M:				dynamic array(Days,ShiftGroups,Patterns) 	of integer; !Indicates of day d on shift group g is in pattern p
+	end-declarations
+
+!=== Additional declarations ===
+	declarations
+		nShiftTypes:	integer;
+		nShiftGroups:	integer;
+		nWeeks:			integer;
+		nDays:			integer;
+	end-declarations
+
+!=== Assorted parameters ===
+	nShiftTypes 	:= 4;
+	nShiftGroups 	:= 3;
+	nWeeks 			:= 4;
+	nDays			:= 28;
+
+	T_R 			:= 8;
+	T_RS 			:= 11;
+	H 				:= 24;
+	C_R 			:= 500; !Reduced rest cost assumed to be 500
+	C_minus 		:= 500; !Hourly wage 500 (?)
+	C_plus 			:= C_minus * 0.5; !50% add on for overtime hours
+	Nmax			:= 6;
+	Nmin			:= 3;
+	W_W				:= nWeeks;
+	Nmin_W			:= 2;
+	D_S				:= nDays;
+	Nmin_S			:= 8;
+	D_R				:= nDays;
+	Nmax_R			:= 14;
+	H_S1			:= 35; !Denmark example
+	H_S2 			:= 55; !Denmark example
+	N_N 			:= 7;
+	W_N				:= N_N/7;
+	H_W				:= 37.5;
+	WMax_plus		:= 12;
+	WMax_minus		:= 16;
+
+!=== Assorted sets and associated parameters ===
+
+	!Shift types
+		ShiftTypes := 1..nShiftTypes;
+
+	!Shift groups
+		ShiftGroups := 1..nShiftGroups;
+
+	!Shifts of shift groups (hard code)
+		ShiftTypesGroup(1) := {1};
+		ShiftTypesGroup(2) := {2};
+		ShiftTypesGroup(3) := {3};
+
+	!Working shifts (hard-code)
+		ShiftTypesWorking := {1, 2, 3};
+		T_S(1)	:= 7;
+		T_S(2) 	:= 15;
+		T_S(3) 	:= 23;
+		T_E(1) 	:= 15;
+		T_E(2) 	:= 23;
+		T_E(3)	:= 31; !31 means 07:00 on the next day
+		T(1)	:= 8;
+		T(2) 	:= 8;
+		T(3) 	:= 8;
+
+	!Off shifts (hard code)
+		ShiftTypesOff := {4};
+
+	!Illegal (under rest) shifts following
+		forall (s1 in ShiftTypesWorking) do
+			forall (s2 in ShiftTypesWorking) do !consdier excluding s1 here
+				if (T_S(s2) + H - T_E(s1) < T_R) then
+					FollowingShiftsIllegal(s1) += {s2};
+				end-if
+			end-do
+		end-do
+
+	!Penalized (reduced rest) shifts following
+		forall (s1 in ShiftTypesWorking) do
+			forall (s2 in ShiftTypesWorking) do !consdier excluding s1 here (Might not be smart since one can imagine shift types not allowed to follow themselves
+				if (T_R <= T_S(s2) + H - T_E(s1) and T_S(s2) + H - T_E(s1) < T_RS) then
+					FollowingShiftsPenalty(s1) += {s2};
+				end-if
+			end-do
+		end-do
+
+	!Strict day off (1)
+		forall (s1 in ShiftTypesWorking) do
+			forall (s2 in ShiftTypesWorking) do !consdier excluding s1 here
+				if (T_S(s2) + 2*H - T_E(s1) < H_S1) then
+					StrictDayOff1(s1) += {s2};
+				end-if
+			end-do
+		end-do
+
+	!Strict day off (2)
+		forall (s1 in ShiftTypesWorking) do
+			forall (s2 in ShiftTypesWorking) do !consdier excluding s1 here
+				if (T_S(s2) + 3*H - T_E(s1) < H_S2) then
+					StrictDayOff2(s1) += {s2};
+				end-if
+			end-do
+		end-do
+
+	!Max number of consecutive days working shift groups	(hard-code)
+		NmaxGroup(1) := Nmax; !Set to NMax if no tighter limit
+		NmaxGroup(2) := Nmax;
+		NmaxGroup(3) := 4;
+
+	!Min number of consecutive days working shift groups	(hard-code)
+		NminGroup(1) := 1;
+		NminGroup(2) := 1;
+		NminGroup(3) := 2;
+
+	!Create days
+		Days := 1..nDays;
+
+	!Create weeks
+		Weeks := 1..nWeeks;
+
+	!Days in week
+		forall (d in 1..nDays) do
+			DaysInWeek(ceil(d/7)) += {d};
+		end-do
+
+	!Create weekdays
+		Weekdays := {'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'};
+
+	!Weekend days in week
+		forall (w in 1..nWeeks) do
+			WeekendDaysInWeek(w) += {6+7*(w-1), 7+7*(w-1)};
+		end-do
+
+	!Days on weekday
+		forall (d in Days) do
+			case (d mod 7) of
+				1:	DaysOnWeekday('MON') += {d};
+				2:	DaysOnWeekday('TUE') += {d};
+				3:	DaysOnWeekday('WED') += {d};
+				4:	DaysOnWeekday('THU') += {d};
+				5:	DaysOnWeekday('FRI') += {d};
+				6:	DaysOnWeekday('SAT') += {d};
+				0:	DaysOnWeekday('SUN') += {d};
+			end-case
+		end-do
+
+	!Days on weekday in week
+		forall (d in 1..nDays) do
+			case (d mod 7) of
+				1:	DaysOnWeekdayInWeek('MON', ceil(d/7)) += {d};
+				2:	DaysOnWeekdayInWeek('TUE', ceil(d/7)) += {d};
+				3:	DaysOnWeekdayInWeek('WED', ceil(d/7)) += {d};
+				4:	DaysOnWeekdayInWeek('THU', ceil(d/7)) += {d};
+				5:	DaysOnWeekdayInWeek('FRI', ceil(d/7)) += {d};
+				6:	DaysOnWeekdayInWeek('SAT', ceil(d/7)) += {d};
+				0:	DaysOnWeekdayInWeek('SUN', ceil(d/7)) += {d};
+			end-case
+		end-do
+
+	!Norm period for workload calculation start days
+		forall (d in 1..nDays | d mod N_N = 1) do
+			NormPeriodStartDays += {d};
+		end-do
+
+	!Costs of shifts (temporary random cost between -1000 and 1000)
+		forall (d in Days) do
+			forall (s in ShiftTypes) do
+				C(d, s) := -1000 + 2000 * random;
+			end-do
+		end-do
+
+	!Patterns
+		PatternsRewarded := 1..1;
+		PatternsPenalized := 2..2;
+		PatternsIllegal := 3..3;
+		Patterns := PatternsRewarded + PatternsPenalized + PatternsIllegal;
+		!Create patterns
+		D(1) := 4; !Number of days in patterns
+		D(2) := 5;
+		D(3) := 6;
+		forall (p in Patterns) do !Initialize zero entries for all parameters
+			forall (d in 1..D(p)) do
+				forall (g in ShiftGroups) do
+					M(d, g, p) := 0;
+				end-do
+			end-do
+		end-do
+		!Patterns
+		M(1, 1, 1) := 1;
+		M(2, 1, 1) := 1;
+		M(3, 1, 1) := 1;
+		M(4, 1, 1) := 1;
+
+		M(1, 3, 2) := 1;
+		M(2, 2, 2) := 1;
+		M(3, 1, 2) := 1;
+		M(4, 2, 2) := 1;
+		M(5, 3, 2) := 1;
+
+		M(1, 3, 3) := 1;
+		M(2, 2, 3) := 1;
+		M(3, 1, 3) := 1;
+		M(4, 3, 3) := 1;
+		M(5, 2, 3) := 1;
+		M(6, 1, 3) := 1;
+
+		!Rewards and penalties
+		R(1) := 500;
+		P(2) := 500;
+
+		!Start days of patterns
+		WeekdaysStartPattern(1) := Weekdays;
+		WeekdaysStartPattern(2) := Weekdays;
+		WeekdaysStartPattern(3) := Weekdays;
+
+!=== Write to data file ===
+	initializations to DataFile
+		!Shifts
+		ShiftTypes;
+		ShiftGroups;
+		ShiftTypesGroup;
+		ShiftTypesWorking;
+		ShiftTypesOff;
+
+		!Shift combinations and patterns
+		FollowingShiftsIllegal;
+		FollowingShiftsPenalty;
+		StrictDayOff1;
+		StrictDayOff2;
+		PatternsRewarded;
+		PatternsPenalized;
+		PatternsIllegal;
+
+		!Weeks
+		Weeks;
+
+		!Days
+		Days;
+		DaysInWeek;
+		Weekdays;
+		WeekendDaysInWeek;
+		DaysOnWeekday;
+		DaysOnWeekdayInWeek;
+		NormPeriodStartDays;
+		WeekdaysStartPattern;
+
+		!Time
+		T_S;
+		T_E;
+		T;
+		T_R;
+		T_RS;
+		H;
+
+		!Other
+		C;
+		C_R;
+		C_minus;
+		C_plus;
+		Nmax;
+		NmaxGroup;
+		Nmin;
+		NminGroup;
+		W_W;
+		Nmin_W;
+		D_S;
+		Nmin_S;
+		D_R;
+		Nmax_R;
+		H_S1;
+		H_S2;
+		N_N;
+		W_N;
+		H_W;
+		WMax_plus;
+		WMax_minus;
+		P;
+		R;
+		D;
+		M;
+	end-initializations
+
+end-model
