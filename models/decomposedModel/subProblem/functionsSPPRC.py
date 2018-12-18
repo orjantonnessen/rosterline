@@ -57,9 +57,6 @@ def dominating(label1: Label, label2: Label, data):
         for e in range(data['W_W']):
             if label1.resources.TV[str(e)] > label2.resources.TV[str(e)]: # Weakly less weekends working
                 return False
-    if 'TL' in Resources.resourceVec():
-        if label1.resources.TL > label2.resources.TL:
-            return False
     if 'TI' in Resources.resourceVec():
         for p in data['PatternsIllegal']:
             for wd in data['WeekdaysStartPattern'][str(p)]:
@@ -103,8 +100,6 @@ def initializeLabel(nodes, data):
             label.resources.__dict__[r] = TH
         if r == 'TV':
             label.resources.__dict__[r] = TV
-        if r == 'TL':
-            label.resources.__dict__[r] = 0
         if r == 'TI':
             label.resources.__dict__[r] = TI
     return label
@@ -133,9 +128,6 @@ def extend(label: Label, arcs: [Arc], labelName, data):
                 resources.TH = ref.TH(label.resources.TH, extendedArc, data)
             if r == "TV":
                 resources.TV = ref.TV(label.resources.TV, extendedArc, data)
-            if r == 'TL':
-                resources.TL = ref.TL(label.resources.TL, extendedArc, data)
-                overtimeCost = max(0, data['C_plus']*min(copy.copy(resources.TL) - data['W_N']*data['H_W'], extendedArc.workload)) #Extra cost for overtime
             if r == 'TI':
                 resources.TI = ref.TI(label.resources.TI, extendedArc, data)
         newLabel = Label(
@@ -404,8 +396,6 @@ def graphMaker(data):
             resourceWindows.__dict__[r] = TH
         if r == 'TV':
             resourceWindows.__dict__[r] = TV
-        if r == 'TL':
-            resourceWindows.__dict__[r] = [0, data['W_N']*data['H_W'] + data['WMax_plus']]
         if r == 'TI':
             resourceWindows.__dict__[r] = TI
     node = Node(name = name, day = 0, shiftType = 0, resourceWindows = resourceWindows)
@@ -459,8 +449,6 @@ def graphMaker(data):
                     resourceWindows.__dict__[r] = TH
                 if r == 'TV':
                     resourceWindows.__dict__[r] = TV
-                if r == 'TL':
-                    resourceWindows.__dict__[r] = [0, data['W_N']*data['H_W'] + data['WMax_plus']]
                 if r == 'TI':
                     resourceWindows.__dict__[r] = TI
             node = Node(name = name, day = day, shiftType = shiftType, resourceWindows = resourceWindows)
@@ -523,8 +511,6 @@ def graphMaker(data):
             resourceWindows.__dict__[r] = TH
         if r == 'TV':
             resourceWindows.__dict__[r] = TV
-        if r == 'TL':
-            resourceWindows.__dict__[r] = [0, data['W_N']*data['H_W'] + data['WMax_plus']]
         if r == 'TI':
             resourceWindows.__dict__[r] = TI
     node = Node(name = name + 1, day = len(data['Days']) + 1, shiftType = 0, resourceWindows = resourceWindows)
