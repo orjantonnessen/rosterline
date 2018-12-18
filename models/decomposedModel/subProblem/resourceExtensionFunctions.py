@@ -83,19 +83,6 @@ def TV(TV,arc,data): #TV is a dictionary of the resource for each e in 0,..,W_W-
                 break
     return newTV
 
-'''TL (Workload)'''
-def TL(TL,arc,data): #TL is a scalar input of the current resource value
-    i=arc.start.shiftType
-    j=arc.end.shiftType
-    d=arc.end.day
-    newTL = copy.copy(TL)
-    workload = arc.workload
-    if d in data['NormPeriodStartDays']:
-        newTL = workload
-    else:
-        newTL = newTL + workload
-    return newTL
-
 '''TI (Illegal patterns)'''
 def TI(TI,arc,data): #TI is a dictionary of the resource for each p in P_I and for each p a dictionary of days. E.g. with two patterns TI={'1': {'1': 0, '2': 1,...}, '2': {'1': 0, '2': 1,...}}
     i=arc.start.shiftType
