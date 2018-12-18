@@ -1,0 +1,402 @@
+! This file is the code for a MIP model of the roster line problem pr. 31. October 2018
+! Created by Sander Coates and Vegard Pedersen
+! Part of Project Report 9. semester Ind�k
+! ------------------------------------------------------------------------------
+
+!=== Setup ===
+	model rosterlineMIP
+
+	options explterm
+	options noimplicit
+
+	uses "mmxprs"; !gain access to the Xpress-Optimizer solver
+	
+	!Data file names
+	parameters
+		InstanceFile = 'instanceFile.txt';
+		SolutionFile = 'solution.txt';
+	end-parameters
+	
+	!setparam("xprs_verbose", true); !Enables printing during model run
+
+!=== Data file declarations ===
+	declarations
+		!=== Sets ===
+			!Shifts
+			ShiftTypes:					set 						of integer; !Set of possible shift types
+			ShiftGroups:				set 						of integer; !Set of shift groups
+			ShiftTypesGroup: 			dynamic array(ShiftGroups)	of set of integer; !Sets of shift types in one shift group
+			ShiftTypesWorking: 			set 						of integer; !Set of shift types representing working shifts
+			ShiftTypesOff: 				set 						of integer; !Set of shift types representing off shifts
+
+			!Shift combinations and patterns
+			FollowingShiftsIllegal: 	dynamic array(ShiftTypes) 	of set of integer; !Sets of shift types not allowed to follow shift type s
+			FollowingShiftsPenalty: 	dynamic array(ShiftTypes) 	of set of integer; !Sets of shift types incurring rest penalty if following shift type s
+			StrictDayOff1: 				dynamic array(ShiftTypes)	of set of integer; !Set of shift types that cannot follow shift type with one strict day off in between
+			StrictDayOff2: 				dynamic array(ShiftTypes)	of set of integer; !Set of shift types that cannot follow shift type with two strict days off in between
+			PatternsPenalized: 			set 						of integer; !Set of penalized patterns
+			PatternsRewarded: 			set 						of integer; !Set of rewarded patterns
+			PatternsIllegal: 			set 						of integer; !Set of illegal patterns
+			Patterns:					set 						of integer; !Assisting set - union of all pattern sets
+
+			!Weeks
+			Weeks: 						set of integer; !Set of weeks in planning period
+
+			!Days
+			Days: 						set 							of integer; !Set of days in planning period
+			DaysInWeek: 				dynamic array(Weeks) 			of set of integer; !Sets of days in week w
+			Weekdays: 					set 							of string; !Set of weekdays (set to integer representation for now)
+			WeekendDaysInWeek: 			dynamic array(Weeks) 			of set of integer; !Sets of weekend days in week w
+			DaysOnWeekday: 				dynamic array(Weekdays)			of set of integer; !Sets of days occuring on weekday a
+			DaysOnWeekdayInWeek: 		dynamic array(Weekdays,Weeks)	of set of integer; !Set of days on weekday a in week w (one day)
+			NormPeriodStartDays: 		set of integer; !Set of starting days in norm periods for work load calculations
+			WeekdaysStartPattern: 		dynamic array(Patterns) 		of set of string; !Set of set of weekdays when pattern p can begin
+
+		!=== Parameters ===
+			!Time
+			T_S:			array(ShiftTypesWorking)					of real; !Start time of shift type s
+			T_E:			array(ShiftTypesWorking)					of real; !End time of shift type s
+			T:				array(ShiftTypesWorking)					of real; !Duration of shift type s
+			T_R:														real; !Min rest time between shifts without penalty
+			T_RS:														real; !Min rest time between shifts
+			H:															integer; !Hours in a day (=24)
+
+			!Other
+			C:				array(Days,ShiftTypes)						of real; !Cost of shift type s on day d
+			C_R:														real; !Cost per day with less than T_R hours of rest
+			C_minus:													real; !Cost per hour undertime in norm period
+			C_plus:														real; !Cost per hour overtime in norm period
+			Nmax:														integer; !Max number of consecutive days working
+			NmaxGroup:		array(ShiftGroups)							of integer; !Max number of consecutive days working shift group g
+			Nmin:														integer; !Min number of consecutive days working
+			NminGroup:		array(ShiftGroups)							of integer; !Min number of consecutive days working shift group g
+			W_W:														integer; !Number of weeks in period subject to constraints on number of free wekends
+			Nmin_W:														integer; !Number of weekends free during a period of W_W weekends
+			D_S:														integer; !Number of days in period with requirements on strict days off
+			Nmin_S:														integer; !Min number of strict days off in D_S days
+			D_R:														integer; !Number of days in period with requirements on resting days
+			Nmax_R:														integer; !Max number of days with little rest in R days
+			H_S1:														real; !Number of hours off required for strict day off
+			H_S2:														real; !Number of hours off required for two strict days off
+			N_N:														integer; !Number of days in norm period for workload calculation
+			W_N:														real; !Number of weeks in norm period for workload calculation (=N_N/7)
+			H_W:														real; !Number of contracted working hours per week
+			WMax_plus:													real; !Maximum hours of overtime in norm period for workload calculation
+			WMax_minus:													real; !Maximum hours of undertime in norm period for workload calculation
+			P:				array(PatternsPenalized)					of real; !Penalty for working pattern p
+			R:				array(PatternsRewarded)						of real; !Reward for working pattern p
+			D:				dynamic array(Patterns) 					of integer; !Duration (number of days) in pattern p
+			M:				dynamic array(Days,ShiftGroups,Patterns) 	of integer; !Indicates of day d on shift group g is in pattern p
+	end-declarations
+
+!=== Initializations ===
+	initializations from InstanceFile
+		!=== Sets ===
+			!Shifts
+			ShiftTypes;
+			ShiftGroups;
+			ShiftTypesGroup;
+			ShiftTypesWorking;
+			ShiftTypesOff;
+
+			!Shift combinations and patterns
+			FollowingShiftsIllegal;
+			FollowingShiftsPenalty;
+			StrictDayOff1;
+			StrictDayOff2;
+			PatternsPenalized;
+			PatternsRewarded;
+			PatternsIllegal;
+
+			!Weeks
+			Weeks;
+
+			!Days
+			Days;
+			DaysInWeek;
+			Weekdays;
+			WeekendDaysInWeek;
+			DaysOnWeekday;
+			DaysOnWeekdayInWeek;
+			NormPeriodStartDays;
+			WeekdaysStartPattern;
+
+		!=== Parameters ===
+			!Time
+			T_S;
+			T_E;
+			T;
+			T_R;
+			T_RS;
+			H;
+
+			!Other
+			C;
+			C_R;
+			C_minus;
+			C_plus;
+			Nmax;
+			NmaxGroup;
+			Nmin;
+			NminGroup;
+			W_W;
+			Nmin_W;
+			D_S;
+			Nmin_S;
+			D_R;
+			Nmax_R;
+			H_S1;
+			H_S2;
+			N_N;
+			W_N;
+			H_W;
+			WMax_plus;
+			WMax_minus;
+			P;
+			R;
+			D;
+			M;
+	end-initializations
+
+!=== Variables ===
+	declarations
+		x:				dynamic array(Days,ShiftTypes)							of mpvar; !Start time of shift type s
+		m:				dynamic array(Days,PatternsPenalized+PatternsRewarded)	of mpvar; !Pattern p worked, starting on day d
+		v:				dynamic array(Days)										of mpvar; !Minimum rest on day d
+		s:				dynamic array(Days)										of mpvar; !Strict day off on day d
+		u_minus:		dynamic array(NormPeriodStartDays)						of mpvar; !Hours working less than contracted in norm period
+		u_plus:			dynamic array(NormPeriodStartDays)						of mpvar; !Hours working more than contracted in norm period
+	end-declarations
+
+	!Create x variables
+		forall (d in Days) do
+			forall (ss in ShiftTypes) do
+				create(x(d,ss));
+				x(d,ss) is_binary;
+			end-do
+		end-do
+
+	!Create m variables
+		forall (p in PatternsRewarded+PatternsPenalized) do
+			forall (d in union(a in WeekdaysStartPattern(p)) DaysOnWeekday(a) | d <= getsize(Days) - D(p) + 1) do !Consider replacing getsize(Days) with parameter nDays
+				create(m(d, p));
+				m(d, p) is_binary;
+			end-do
+		end-do
+
+	!Create s and v variables
+		forall (d in Days) do
+			create(v(d));
+			v(d) is_binary; !Consider redundant
+			create(s(d));
+			s(d) is_binary; !Consider redundant
+		end-do
+
+	!Create u variables
+		forall (d in NormPeriodStartDays) do
+			create(u_minus(d));
+			u_minus(d) <= WMax_minus;
+			create(u_plus(d));
+			u_plus(d) <= WMax_plus;
+		end-do
+
+!=== Objective function ===
+	declarations
+		RosterLineCost:	linctr;
+	end-declarations
+
+	RosterLineCost :=	  sum(d in Days, ss in ShiftTypes) C(d, ss) * x(d, ss) !Cost of shift
+						+ C_R * sum(d in Days) v(d) !Reduced rest penalty
+						+ C_minus * sum(d in NormPeriodStartDays) u_minus(d) !Under time penalty
+						+ C_plus * sum(d in NormPeriodStartDays) u_plus(d) !Over time penalty
+						+ sum(p in PatternsPenalized) P(p) * sum(d in union(i in WeekdaysStartPattern(p)) DaysOnWeekday(i) | d <= getsize(Days) - D(p) + 1) m(d, p) !Pattern penalty
+						- sum(p in PatternsRewarded) R(p) * sum(d in union(i in WeekdaysStartPattern(p)) DaysOnWeekday(i) | d <= getsize(Days) - D(p) + 1) m(d, p); !Pattern reward
+
+!=== Constraints ===
+	declarations
+		OneShiftPerDay:				dynamic array(Days)							of linctr; !One shift per day
+		MaxConsecDaysWorking:		dynamic array(Days)							of linctr; !Maximum consecutive days working
+		MinConsecDaysWorking:		dynamic array(Days+{0})						of linctr; !Minimum consecutive days working
+		MaxConsecDaysWorkingGroup:	dynamic array(ShiftGroups, Days)			of linctr; !Maximum consecutive days working shift group
+		MinConsecDaysWorkingGroup:	dynamic array(ShiftGroups, Days+{0})		of linctr; !Minimum consecutive days working shift group
+		RequiredRest:				dynamic array(Days, ShiftTypes, ShiftTypes)	of linctr; !Illegal shifts following, required rest
+		ReducedRest:				dynamic array(Days, ShiftTypes, ShiftTypes)	of linctr; !Penalized shifts following, required rest
+		MaxReducedRest:				dynamic array(Days)							of linctr; !Maximum number of reduced rest days in regulation period
+		FullWeekends:				dynamic array(Days)							of linctr; !Must work both or no days in weekend
+		MinWeekendsOff:				dynamic array(Weeks)						of linctr; !Minimum number of weekends off in regulation period
+		StrictDaysOff:				dynamic array(Days)							of linctr; !Required off shift for strict day off
+		StrictDaysOff1:				dynamic array(Days, ShiftTypes, ShiftTypes)	of linctr; !One strict day off
+		StrictDaysOff2:				dynamic array(Days, ShiftTypes, ShiftTypes)	of linctr; !Two strict days off
+		MinStrictDaysOff:			dynamic array(Days)							of linctr; !Minimum number of strict days of in regulation period
+		WorkLoad:					dynamic array(NormPeriodStartDays)			of linctr; !Work load with under and over time
+		IllegalPatterns:			dynamic array(PatternsIllegal, Days)		of linctr; !No illegal pattern worked
+		RewardedPatterns:			dynamic array(PatternsRewarded, Days)		of linctr; !Get reqaward if worked penalized pattern
+		PenalizedPatterns:			dynamic array(PatternsPenalized, Days)		of linctr; !Take penalty if worked penalized pattern
+		OverlappingPatterns:		dynamic array(PatternsRewarded+PatternsPenalized, Days)				of linctr; !Handle overlapping patterns
+	end-declarations
+
+	!One shift per day
+		forall (d in Days) do
+			OneShiftPerDay(d) := sum(ss in ShiftTypes) x(d, ss) = 1;
+		end-do
+
+	!Maximum consecutive days working
+		forall (d in Days | d <= getsize(Days) - Nmax) do
+			MaxConsecDaysWorking(d) := sum(dd in d..d+Nmax, ss in ShiftTypesWorking) x(dd, ss) <= Nmax;
+		end-do
+
+	!Minimum consecutive days working
+		forall (d in (Days+{0}) | d <= getsize(Days) - Nmin) do
+			if (d = 0) then !Assume that the employee comes from an off shift
+				MinConsecDaysWorking(d) := sum(dd in (d+1)..d+Nmin, ss in ShiftTypesWorking) x(dd, ss) >= Nmin * (1 - sum(ss in ShiftTypesOff) x(d + 1, ss));
+			else
+				MinConsecDaysWorking(d) := sum(dd in (d+1)..d+Nmin, ss in ShiftTypesWorking) x(dd, ss) >= Nmin * sum(ss in ShiftTypesOff) (x(d, ss) - x(d + 1, ss));
+			end-if
+		end-do
+
+	!Maximum consecutive days working shift group
+		forall (g in ShiftGroups, d in Days | d <= getsize(Days) - NmaxGroup(g)) do
+			MaxConsecDaysWorkingGroup(g, d) := sum(dd in d..d+NmaxGroup(g), ss in ShiftTypesGroup(g)) x(dd, ss) <= NmaxGroup(g);
+		end-do
+
+	!Minimum consecutive days working shift group
+		forall (g in ShiftGroups, d in (Days+{0}) | d <= getsize(Days) - NminGroup(g)) do
+			if (d = 0) then !Assume that the employee comes from an off shift
+				MinConsecDaysWorkingGroup(g,d) := sum(dd in (d+1)..d+NminGroup(g), ss in ShiftTypesGroup(g)) x(dd, ss) >= NminGroup(g) * (sum(ss in ShiftTypesGroup(g))x(d + 1, ss) - 1);
+			else
+				MinConsecDaysWorkingGroup(g,d) := sum(dd in (d+1)..d+NminGroup(g), ss in ShiftTypesGroup(g)) x(dd, ss) >= NminGroup(g) * sum(ss in ShiftTypesGroup(g))(x(d + 1, ss) - x(d, ss));
+			end-if
+		end-do
+
+	!Required rest - illegal combinations
+		forall (d in Days - {1}, s1 in ShiftTypes | exists(FollowingShiftsIllegal(s1))) do
+			forall (s2 in FollowingShiftsIllegal(s1)) do
+				RequiredRest(d, s1, s2) := x(d-1, s1) + x(d, s2) <= 1;
+			end-do
+		end-do
+
+	!Reduced rest - penalized combinations
+		forall (d in Days - {1}, s1 in ShiftTypes | exists(FollowingShiftsPenalty(s1))) do
+			forall (s2 in FollowingShiftsPenalty(s1)) do
+				ReducedRest(d, s1, s2) := x(d-1, s1) + x(d, s2) <= 1 + v(d);
+			end-do
+		end-do
+
+	!Maximum reduced rest over regulation period
+		forall (d in Days | d <= getsize(Days) - D_R + 1) do
+			MaxReducedRest(d) := sum(dd in d..d+D_R-1) v(dd) <= Nmax_R;
+		end-do
+
+	!Working both or no days of weekend
+		forall (d in DaysOnWeekday('SAT') | d <= getsize(Days) - 1) do
+			FullWeekends(d) := sum(ss in ShiftTypesOff) (x(d, ss) - x(d+1, ss)) = 0;
+		end-do
+
+	!Minimum number of weekends off in regulation period
+		forall (w in Weeks | w <= getsize(Weeks) - W_W+1) do
+			MinWeekendsOff(w) := sum(ww in w..w+W_W-1, ss in ShiftTypesOff, d in DaysOnWeekdayInWeek('SAT',ww)) x(d,ss) >= Nmin_W;
+		end-do
+
+	!Strict days off
+		forall (d in Days) do
+			StrictDaysOff(d) := s(d)-sum(ss in ShiftTypesOff)x(d,ss) <= 0;
+		end-do
+
+	!One strict day off
+		forall (d in Days | d > 1 and d < getsize(Days)) do
+			forall (s1 in ShiftTypes | exists(StrictDayOff1(s1))) do
+				forall (s2 in StrictDayOff1(s1)) do
+					StrictDaysOff1(d, s1, s2) := x(d-1, s1) + s(d) + x(d+1, s2) <= 2;
+				end-do
+			end-do
+		end-do
+
+	!Two strict days off
+		forall (d in Days | d > 1 and d < getsize(Days) - 1) do
+			forall (s1 in ShiftTypes | exists(StrictDayOff2(s1))) do
+				forall (s2 in StrictDayOff2(s1)) do
+					StrictDaysOff2(d, s1, s2) := x(d-1, s1) + s(d) + s(d+1) + x(d+2, s2) <= 3;
+				end-do
+			end-do
+		end-do
+
+	!Minimum strict days off in period
+		forall (d in Days | d <= getsize(Days) - D_S + 1) do
+			MinStrictDaysOff(d) := sum(dd in d..d+D_S-1)s(dd) >= Nmin_S;
+		end-do
+
+	!Work load
+		forall (d in NormPeriodStartDays) do
+			WorkLoad(d) := sum(dd in d..d+N_N-1, ss in ShiftTypesWorking)T(ss)*x(dd,ss) + u_minus(d) - u_plus(d) = W_N*H_W;
+		end-do
+
+	!Rewarded Patterns
+		forall (p in PatternsRewarded, d in union(a in WeekdaysStartPattern(p)) DaysOnWeekday(a) | d <= getsize(Days) - D(p) + 1) do
+			RewardedPatterns(p, d) := sum(dd in 1..D(p), g in ShiftGroups) M(dd, g, p) * sum(ss in ShiftTypesGroup(g)) x(d+dd-1, ss) >= D(p) * m(d, p);
+		end-do
+
+	!Penalized Patterns
+		forall (p in PatternsPenalized, d in union(a in WeekdaysStartPattern(p)) DaysOnWeekday(a) | d <= getsize(Days) - D(p) + 1) do
+			PenalizedPatterns(p, d) := sum(dd in 1..D(p), g in ShiftGroups) M(dd, g, p) * sum(ss in ShiftTypesGroup(g)) x(d+dd-1, ss) <= D(p) - 1 + m(d, p);
+		end-do
+
+	!Illegal Patterns
+		forall (p in PatternsIllegal, d in union(a in WeekdaysStartPattern(p)) DaysOnWeekday(a) | d <= getsize(Days) - D(p) + 1) do
+			IllegalPatterns(p, d) := sum(dd in 1..D(p), g in ShiftGroups) M(dd, g, p) * sum(ss in ShiftTypesGroup(g)) x(d+dd-1, ss) <= D(p) - 1;
+		end-do
+
+	!Overlapping patterns
+		forall (p in PatternsRewarded + PatternsPenalized, d in union(a in WeekdaysStartPattern(p)) DaysOnWeekday(a) | d <= getsize(Days) - D(p) + 1) do
+			OverlappingPatterns(p, d) := sum (dd in d..d + D(p) - 1) m(dd, p) <= 1;
+		end-do
+
+!=== Solution ===
+	!Solve
+	minimize(RosterLineCost);
+
+	!Print table format
+	writeln;
+	write("Shift types: | ");
+	forall (ss in ShiftTypes) do
+		write("ST ", ss, " | ");
+	end-do
+	writeln;
+	forall (d in Days) do
+		if (d < 10) then !Need one extra space
+			write("Day  ", d, ":       |");
+		elif (d < 100) then !Need one extra space
+			write("Day  ", d, ":      |");
+		else
+			write("Day ", d, ":      |");
+		end-if
+		forall (ss in ShiftTypes) do
+			if(getsol(x(d, ss)) > 0) then
+				write("   x  |");
+			else
+				write("      |");
+			end-if
+		end-do
+		writeln;
+	end-do
+	writeln;
+	writeln("Objective value: ", getobjval);
+
+	!=== Write solution to file ===
+	declarations
+		xx: array(Days) of real;
+		objective: real;
+	end-declarations
+	forall(d in Days) do
+		forall(ss in ShiftTypes) do
+			if (getsol(x(d, ss)) > 0) then
+				xx(d) := ss;
+			end-if
+		end-do
+	end-do
+	objective := getobjval;
+	initializations to SolutionFile
+		xx;
+		objective;
+	end-initializations
+
+end-model
