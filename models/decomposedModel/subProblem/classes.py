@@ -10,7 +10,6 @@ class Resources:
         TWMin_g: dict = {None}, # Min consecutive days working shift group
         TH: dict = {None}, #Max number of days with reduced rest
         TV: dict = {None}, #Minimum number of weekends off
-        TL: float = None, #Workload
         TI: dict = {'1': {'1': None}} #Illegal patterns
         ):
             self.DummyResource = DummyResource
@@ -20,7 +19,6 @@ class Resources:
             self.TWMin_g = TWMin_g
             self.TH = TH
             self.TV = TV
-            self.TL = TL
             self.TI = TI
 
     def resourceVec(): #Returns vector of resources used
@@ -39,7 +37,6 @@ class ResourceWindows:
         TWMin_g: dict = {None},
         TH: dict = {None},
         TV: dict = {None},
-        TL: [float] = [None],
         TI: dict = {'1': {'1': None}}
         ):
             self.DummyResource = DummyResource
@@ -49,7 +46,6 @@ class ResourceWindows:
             self.TWMin_g = TWMin_g
             self.TH = TH
             self.TV = TV
-            self.TL = TL
             self.TI = TI
 
 class Node:
